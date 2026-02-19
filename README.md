@@ -63,6 +63,12 @@ Each sensor is managed by a `sensor_worker` thread:
 
 ---
 
+## Stop / Shutdown Sequence
+
+![Stop Sequence](docs/diagrams/mpsc_stop_seq.svg)
+
+---
+
 ## Measurement Format
 
 Parsed frames are published as:
@@ -74,9 +80,3 @@ struct measurement {
     size_t sensor_id = 0;
     size_t sequence_number = 0;
 };
-
----
-
-## Stop / Shutdown Sequence
-
-![Stop Sequence](docs/diagrams/mpsc_stop_seq.drawio.svg)
