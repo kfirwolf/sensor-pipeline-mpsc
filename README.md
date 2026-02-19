@@ -74,3 +74,9 @@ struct measurement {
     size_t sensor_id = 0;
     size_t sequence_number = 0;
 };
+
+---
+
+## Stop / Shutdown Sequence
+
+![Stop Sequence](docs/diagrams/mpsc_stop_seq.drawio.svg)
