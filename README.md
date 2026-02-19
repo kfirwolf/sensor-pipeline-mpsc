@@ -60,9 +60,13 @@ Each sensor is managed by a `sensor_worker` thread:
 
 - `global_queue`  
   Bounded MPSC queue of `measurement` objects.
-
 ---
 
+## System Overview
+
+![System Overview](docs/diagrams/mpsc_general.svg)
+
+---
 ## Stop / Shutdown Sequence
 
 ![Stop Sequence](docs/diagrams/mpsc_stop_seq.svg)
