@@ -1,5 +1,5 @@
-#ifndef _GLOBAL_QUEUE_H_
-#define _GLOBAL_QUEUE_H_
+#ifndef _LOC_GLOBAL_QUEUE_H_
+#define _LOC_GLOBAL_QUEUE_H_
 
 #include <cstdint>
 #include <cstddef>
@@ -9,8 +9,19 @@
 #include "measurement.h"
 
 /*
+alignas(64):
+    Forces each atomic to begin on its own 64-byte boundary.
+    This ensures:
+    read lives in its own cache line
+    write lives in its own cache line
+    No false sharing
+*/
 
-
+/*
+memory order:
+    The producer must use release semantics when publishing the slot (updating seq), and the consumer must use acquire semantics when loading seq.
+    This ensures that the write to the data happens-before the consumer reads it.
+    Without acquire/release, the CPU could reorder operations and the consumer might observe a published slot before the data is fully written.
 */
 
 template <typename T>
@@ -78,7 +89,6 @@ public:
                     //successfully claimed the slot
                     break;
                 }
-
                 //slot accupied, try again
             }
             else if(diff < 0) {
@@ -139,7 +149,6 @@ public:
     void shutdown() {
 
         if (shut_down.load(std::memory_order_relaxed)) return;
-        std::unique_lock<std::mutex> lock(m);
         shut_down.store(true, std::memory_order_relaxed);
     }
 };

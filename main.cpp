@@ -1,7 +1,7 @@
 #include "sensor_worker.h"
 #include "fake_sensor_source.h"
 #include "sensor_source.h"
-#include "global_queue.h"
+#include "lockless_global_queue.h"
 #include "fake_frame_parser.h"
 #include "measurement.h"
 #include <thread>

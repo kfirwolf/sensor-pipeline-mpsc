@@ -138,8 +138,18 @@ public:
         return error_counter;
     }
 
-    size_t dropped_frames() const override {
-        return frames_dropped;
+    bool has_capacity() const override {
+        return (measurements_buffer.size() < measurements_buffer_size);
+    }
+
+    const measurement& peek_frame() const override{
+        assert(has_frame());
+        return measurements_buffer.front();
+    }
+
+    void pop_frame() override {
+        assert(has_frame());
+        measurements_buffer.pop_front();
     }
 
 };
