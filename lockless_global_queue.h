@@ -1,5 +1,5 @@
-#ifndef _GLOBAL_QUEUE_H_
-#define _GLOBAL_QUEUE_H_
+#ifndef _LOC_GLOBAL_QUEUE_H_
+#define _LOC_GLOBAL_QUEUE_H_
 
 #include <cstdint>
 #include <cstddef>
@@ -78,7 +78,6 @@ public:
                     //successfully claimed the slot
                     break;
                 }
-
                 //slot accupied, try again
             }
             else if(diff < 0) {

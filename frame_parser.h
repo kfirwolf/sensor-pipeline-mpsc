@@ -78,7 +78,9 @@ public:
     virtual bool has_frame() const = 0;
     virtual void feed_bytes(const uint8_t *chunk, size_t len) = 0;
     virtual size_t error_count() const = 0;
-    virtual size_t dropped_frames() const = 0;
+    virtual bool has_capacity() const = 0;
+    virtual const measurement& peek_frame() const = 0;
+    virtual void pop_frame() = 0;
 };
 
 #endif

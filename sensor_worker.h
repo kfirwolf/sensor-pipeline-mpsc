@@ -41,7 +41,20 @@ class sensor_worker {
         size_t read_errors;
         size_t eos_count;
         size_t stream_overflow_bytes;
+        size_t queue_full_failures;
         std::thread worker_thread;
+
+        bool push_to_queue() {
+            measurement meas = f_parser.peek_frame();
+            meas.sensor_id = this->sensor_id;
+            meas.system_timestamp = std::chrono::steady_clock::now();            
+            if (!global_q.push(std::move(meas))) {
+                queue_full_failures++;
+                return false;
+            }
+            f_parser.pop_frame();
+            return true;
+        }
 
         /*
         run() must exit when any of these happen:
@@ -78,36 +91,34 @@ class sensor_worker {
                 s_buf_num_of_bytes = st_buffer.append(read_buffer.data(), static_cast<size_t>(num_of_bytes_from_sensor));
                 if (s_buf_num_of_bytes < static_cast<size_t>(num_of_bytes_from_sensor)) {
                     stream_overflow_bytes += static_cast<size_t>(num_of_bytes_from_sensor) - s_buf_num_of_bytes;
-                    //std::cout << "ERROR: stream buffer avilable bytes:  " << s_buf_num_of_bytes << "< " << "bytes count from sensor: " << num_of_bytes_from_sensor <<std::endl;
                     //stream buffer capacity is to small for the amount of data from sensor
-                    //lost data do to stream buffer , can get statistics from this
+                    //lost oldest data do to stream buffer
+                }
+
+                while (f_parser.has_frame()) {
+                    if (!push_to_queue()) {
+                        break;
+                    }
                 }
 
                 // Extraction from the stream buffer append to parser and to globle queue:
-                while (st_buffer.available() > 0) {
+                while (st_buffer.available() > 0 && f_parser.has_capacity()) {
                     size_t min_extract = std::min(st_buffer.available() ,PARSER_CHUNK_SIZE);
                     
                     if (!st_buffer.extract(chunk, min_extract)) {
                         //should no happened , maybe throw a exception
                         return;
                     }
-
-                    //std::cout << "extracted " << min_extract << " bytes from stream buffer" << std::endl; 
                     f_parser.feed_bytes(chunk, min_extract);
 
                     //push to global queue
                     while (f_parser.has_frame()) {
-                        measurement meas = f_parser.extract_frame();
-                        meas.sensor_id = this->sensor_id;
-                        meas.system_timestamp = std::chrono::steady_clock::now();
-                        if (global_q.push(std::move(meas)) == false) {
-                            return;
-                            //shot down proc
-                        }
+                        if (!push_to_queue()) {
+                            break;
+                        }                        
                     }
                 }
             } 
-
             //read_bytes() which is blocking
             //bytes save at tmp buffer
             //all tmp buffer and it size append to stream buffer
@@ -118,7 +129,7 @@ class sensor_worker {
 
 
     public:
-        sensor_worker(size_t stream_buffer_size, size_t sensorid, sensor_source &sen_s, frame_parser &f_prsr, global_queue<measurement> &g_q): st_buffer(std::max(stream_buffer_size, PARSER_CHUNK_SIZE)), sensor_id(sensorid), f_parser(f_prsr), global_q(g_q), s_source(sen_s), stop_req{false}, started{false}, read_errors(0), eos_count(0), stream_overflow_bytes(0) {
+        sensor_worker(size_t stream_buffer_size, size_t sensorid, sensor_source &sen_s, frame_parser &f_prsr, global_queue<measurement> &g_q): st_buffer(std::max(stream_buffer_size, PARSER_CHUNK_SIZE)), sensor_id(sensorid), f_parser(f_prsr), global_q(g_q), s_source(sen_s), stop_req{false}, started{false}, read_errors(0), eos_count(0), stream_overflow_bytes(0), queue_full_failures(0) {
         }
 
         ~sensor_worker() {

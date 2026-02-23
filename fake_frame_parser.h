@@ -36,7 +36,4 @@ class fake_frame_parser : public frame_parser {
         return 0;
     }
 
-    size_t dropped_frames() const override {
-        return 0;
-    }    
 };

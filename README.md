@@ -60,6 +60,25 @@ Each sensor is managed by a `sensor_worker` thread:
 
 - `global_queue`  
   Bounded MPSC queue of `measurement` objects.
+---
+
+## System Overview
+
+![System Overview](docs/diagrams/mpsc_general.svg)
+
+---
+
+## Normal Data Flow (Happy Path)
+
+This diagram shows how UART bytes propagate through the system
+from acquisition to the global queue and consumer.
+
+![Normal Data Flow](docs/diagrams/mpsc_happy_path_seq.svg)
+
+---
+## Stop / Shutdown Sequence
+
+![Stop Sequence](docs/diagrams/mpsc_stop_seq.svg)
 
 ---
 

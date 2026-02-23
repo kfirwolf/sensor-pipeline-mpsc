@@ -5,7 +5,7 @@
 #include "uart_sensor_source.h"
 #include "fake_sensor_source.h"
 #include "sensor_worker.h"
-#include "global_queue.h"
+#include "lockless_global_queue.h"
 #include "frame_parser.h"
 #include "uart_frame_parser.h"
 #include "fake_frame_parser.h"
