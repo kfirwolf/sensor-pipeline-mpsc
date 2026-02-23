@@ -11,6 +11,15 @@
 
 /*
     This class is suited for MPSC
+    Naive Approach (and Why It Breaks)
+    Idea: Circular buffer + shared head, tail, guarded by a single mutex (or two locks).
+
+    Time: O(1) per op (amortized).
+    Why it breaks:
+    Uses locks → not lock-free. A stalled thread can block everyone.
+    Under heavy contention, convoying and context switches kill throughput.
+    Boundedness is trivial; linearizability is trivial; lock-freedom is not.
+
 */
 
 template <typename T>

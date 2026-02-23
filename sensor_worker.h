@@ -113,7 +113,7 @@ class sensor_worker {
             //all tmp buffer and it size append to stream buffer
             //extract chunks from string buffer and passed to parser
             //pull measurements from parser and passed to globle_queue
-            //must exit run when globle_queue return false
+            //must exit run when globle_queue return false ????? (update global queue to return false when full , so maybe this need to change also)
         }
 
 
