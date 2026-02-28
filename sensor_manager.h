@@ -35,7 +35,7 @@ private:
     std::vector<std::unique_ptr<sensor_worker>> sensor_workers;
 
 public:
-    sensor_manager(size_t globle_q_capacity) : sensor_id(0), g_queue(globle_q_capacity) {
+    sensor_manager(size_t global_q_capacity) : sensor_id(0), g_queue(global_q_capacity) {
     }
 
     ~sensor_manager() = default;
