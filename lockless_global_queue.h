@@ -46,7 +46,7 @@ private:
     std::atomic<bool> shut_down;
     
 public:
-    // capacity must be larger then 0v
+    // capacity must be larger then 0
     global_queue(size_t capacity): read(0), write(0), total_capacity(capacity), mask(capacity -1), shut_down(false) {
 
         if (capacity == 0 || (capacity & (capacity - 1)) != 0) {
