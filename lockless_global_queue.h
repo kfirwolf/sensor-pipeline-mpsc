@@ -1,17 +1,32 @@
-#ifndef _LOC_GLOBAL_QUEUE_H_
-#define _LOC_GLOBAL_QUEUE_H_
+#ifndef _LOCKLESS_GLOBAL_QUEUE_H_
+#define _LOCKLESS_GLOBAL_QUEUE_H_
 
 #include <cstdint>
 #include <cstddef>
-#include <vector>
 #include <atomic>
-#include <stdexcept> 
+#include <stdexcept>
+#include <memory>
 #include "measurement.h"
 
 /*
-
-
+alignas(64):
+    Forces each atomic to begin on its own 64-byte boundary.
+    This ensures:
+    read lives in its own cache line
+    write lives in its own cache line
+    No false sharing
 */
+
+/*
+memory order:
+    The producer must use release semantics when publishing the slot (updating seq), and the consumer must use acquire semantics when loading seq.
+    This ensures that the write to the data happens-before the consumer reads it.
+    Without acquire/release, the CPU could reorder operations and the consumer might observe a published slot before the data is fully written.
+
+    “ordering is via seq acquire/release”.
+*/
+
+enum class queue_status{ OK, FULL, EMPTY, SHUTDOWN };
 
 template <typename T>
 class global_queue
@@ -23,7 +38,7 @@ private:
         T data;
     } slot;
 
-    std::vector<slot> vec;
+    std::unique_ptr<slot[]> vec;
     alignas(64) std::atomic<uint64_t> read;
     alignas(64) std::atomic<uint64_t> write;
     size_t total_capacity; // must be a power of 2
@@ -38,11 +53,11 @@ public:
             throw std::invalid_argument("illegal capacity value");
         }
 
-        vec.resize(capacity);
-        for (size_t i = 0; i < capacity; i++) {
+        vec = (std::make_unique<slot[]>(total_capacity));
+
+        for (size_t i = 0; i < total_capacity; i++) {
             vec[i].seq.store(i, std::memory_order_relaxed);
         }
-
     }
 
     ~global_queue() = default;
@@ -57,15 +72,15 @@ public:
         push(m)	                  => copy
         push(const m)             => copy
     */
-    bool push(T new_meas) {
+    queue_status push(T new_meas) {
 
         uint64_t p{};
-        intptr_t diff = 0;
+        int64_t  diff = 0;
         slot *s = nullptr;
 
         while (true) {
             if (shut_down.load(std::memory_order_relaxed)) {
-                return false;
+                return queue_status::SHUTDOWN;
             }
 
             p = write.load(std::memory_order_relaxed);
@@ -82,7 +97,7 @@ public:
             }
             else if(diff < 0) {
                 //queue is full
-                return false;
+                return queue_status::FULL;
             }
             else {
                 //slot is being used by producer, try again
@@ -91,24 +106,23 @@ public:
 
         s->data = std::move(new_meas);
         s->seq.store(p + 1, std::memory_order_release);        
-        return true;
+        return queue_status::OK;
     }
 
-    //blocking consumer function
-    bool pop(T &meas) {   
+    queue_status pop(T &meas) {   
 
         uint64_t p{};
-        intptr_t diff = 0;
+        int64_t  diff = 0;
         slot *s = nullptr;
 
         while (true) {
             if (shut_down.load(std::memory_order_relaxed)) {
-                return false;
+                return queue_status::SHUTDOWN;
             }        
 
             p = read.load(std::memory_order_relaxed);
-            s = &vec[p & mask];
-            diff = (intptr_t)s->seq.load(std::memory_order_acquire) - (intptr_t)(p + 1);
+            s = &vec[(p & mask)];
+            diff = (int64_t)s->seq.load(std::memory_order_acquire) - (int64_t)(p + 1);
 
             if (diff == 0) {
                 //measurment is avilable to pop
@@ -123,7 +137,7 @@ public:
             }
             else if(diff < 0) {
                 //queue is empty
-                return false;
+                return queue_status::EMPTY;
             }
             else {
                 //slot is being used by producer, try again
@@ -131,15 +145,14 @@ public:
         }
         meas = std::move(s->data);
         s->seq.store(p + total_capacity, std::memory_order_release);
-        return true;
+        return queue_status::OK;
     }
 
 
     void shutdown() {
 
-        if (shut_down.load(std::memory_order_relaxed)) return;
-        std::unique_lock<std::mutex> lock(m);
-        shut_down.store(true, std::memory_order_relaxed);
+        if (shut_down.load(std::memory_order_acquire)) return;
+        shut_down.store(true, std::memory_order_release);
     }
 };
 

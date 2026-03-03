@@ -33,12 +33,15 @@ private:
     std::vector<std::unique_ptr<sensor_source>> sensor_sources;
     std::vector<std::unique_ptr<frame_parser>> frame_parsers;
     std::vector<std::unique_ptr<sensor_worker>> sensor_workers;
+    std::atomic<bool> stopped{false};
 
 public:
-    sensor_manager(size_t globle_q_capacity) : sensor_id(0), g_queue(globle_q_capacity) {
+    sensor_manager(size_t global_q_capacity) : sensor_id(0), g_queue(global_q_capacity) {
     }
 
-    ~sensor_manager() = default;
+    ~sensor_manager() {
+        stop_all();
+    }
 
     void add_sensor(const sensor_config& s_config) {
         switch (s_config.type)
@@ -66,6 +69,10 @@ public:
     }
 
     void stop_all() {
+
+        if (stopped.exchange(true)) {
+            return;
+        }
         for (auto &worker : sensor_workers) {
             worker->stop();
         }

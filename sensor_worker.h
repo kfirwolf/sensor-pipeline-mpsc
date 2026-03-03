@@ -20,11 +20,10 @@
 #include "stream_buffer.h"
 #include "frame_parser.h"
 #include "uart_frame_parser.h"
-#include "global_queue.h"
+#include "lockless_global_queue.h"
 #include "sensor_source.h"
 #include "uart_sensor_source.h"
 #include "measurement.h"
-
 
 class sensor_worker {
 
@@ -45,13 +44,24 @@ class sensor_worker {
         std::thread worker_thread;
 
         bool push_to_queue() {
+            //one measurement copy for every fun call, this is a compromise becuuse if we use move without copying,
+            //we can have a movable (destroyed) object in the parser but the global queue will fail 
             measurement meas = f_parser.peek_frame();
             meas.sensor_id = this->sensor_id;
-            meas.system_timestamp = std::chrono::steady_clock::now();            
-            if (!global_q.push(std::move(meas))) {
+            meas.system_timestamp = std::chrono::steady_clock::now();
+            //here move can succeed but push may fail , very problematic if we dont have an obj copy
+            queue_status q_status = global_q.push(std::move(meas));
+
+            if (q_status == queue_status::FULL) {
                 queue_full_failures++;
                 return false;
             }
+
+            if (q_status == queue_status::SHUTDOWN) {
+                eos_count++;
+                return false;
+            }
+
             f_parser.pop_frame();
             return true;
         }
@@ -61,6 +71,11 @@ class sensor_worker {
         stop_req == true
         sensor_source.read_bytes() returns 0 / error
         global_q.push() returns false
+
+        Backpressure policy:
+        When global queue is full, parsing halts.
+        Stream buffer continues receiving and overwrites oldest bytes.
+        Result: oldest raw sensor data may be lost under overload.
         */
         void run() {
             uint8_t chunk[PARSER_CHUNK_SIZE];
@@ -69,21 +84,15 @@ class sensor_worker {
             size_t s_buf_num_of_bytes = 0;
        
             while (!stop_req.load()) {
-            /*
-                >0  : bytes read
-                =0  : permanent end-of-stream (device closed / shutdown/stop request )
-                <0  : <0 : error (caller retries / counts)   
-            */                             
+
                 num_of_bytes_from_sensor = s_source.read_bytes(read_buffer.data(), read_buffer.size());
 
                 if (num_of_bytes_from_sensor == 0) {
-                    //std::cout << "end-of-stream" << std::endl;
                     eos_count++;
                     break;
                 }
 
                 if (num_of_bytes_from_sensor < 0) {
-                    //std::cout << "error" << std::endl;
                     read_errors++;
                     continue;
                 }                
@@ -101,7 +110,7 @@ class sensor_worker {
                     }
                 }
 
-                // Extraction from the stream buffer append to parser and to globle queue:
+                // Extraction from the stream buffer append to parser and to global queue:
                 while (st_buffer.available() > 0 && f_parser.has_capacity()) {
                     size_t min_extract = std::min(st_buffer.available() ,PARSER_CHUNK_SIZE);
                     
@@ -119,12 +128,12 @@ class sensor_worker {
                     }
                 }
             } 
-            //read_bytes() which is blocking
+            //source: read_bytes() is blocking
             //bytes save at tmp buffer
             //all tmp buffer and it size append to stream buffer
             //extract chunks from string buffer and passed to parser
-            //pull measurements from parser and passed to globle_queue
-            //must exit run when globle_queue return false ????? (update global queue to return false when full , so maybe this need to change also)
+            //pull measurements from parser and passed to global_queue
+            //must exit run when stop is executed.
         }
 
 
