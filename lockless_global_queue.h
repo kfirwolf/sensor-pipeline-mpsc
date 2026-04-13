@@ -9,6 +9,11 @@
 #include "measurement.h"
 
 /*
+T must be move constructible and move assignable, but not necessarily copyable.
+Also T must have a default constructor, because the slot array is initialized with default constructed T objects.
+*/
+
+/*
 alignas(64):
     Forces each atomic to begin on its own 64-byte boundary.
     This ensures:
@@ -74,8 +79,8 @@ public:
     */
     queue_status push(T new_meas) {
 
-        uint64_t p{};
-        int64_t  diff = 0;
+        uint64_t write_tmp{};
+        int64_t  diff{};
         slot *s = nullptr;
 
         while (true) {
@@ -83,20 +88,19 @@ public:
                 return queue_status::SHUTDOWN;
             }
 
-            p = write.load(std::memory_order_relaxed);
-            s = &vec[p & mask];
+            write_tmp = write.load(std::memory_order_relaxed);
+            s = &vec[write_tmp & mask];
 
-            diff = (int64_t)s->seq.load(std::memory_order_acquire) - (int64_t)p;
+            diff = (int64_t)s->seq.load(std::memory_order_acquire) - (int64_t)write_tmp;
             if (diff == 0) {
                 // slot is free — try to reserve it
-                if (write.compare_exchange_weak(p, p + 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
+                if (write.compare_exchange_weak(write_tmp, write_tmp + 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
                     //successfully claimed the slot
                     break;
                 }
                 //slot accupied, try again
             }
             else if(diff < 0) {
-                //queue is full
                 return queue_status::FULL;
             }
             else {
@@ -105,14 +109,14 @@ public:
         }
 
         s->data = std::move(new_meas);
-        s->seq.store(p + 1, std::memory_order_release);        
+        s->seq.store(write_tmp + 1, std::memory_order_release);        
         return queue_status::OK;
     }
 
     queue_status pop(T &meas) {   
 
-        uint64_t p{};
-        int64_t  diff = 0;
+        uint64_t read_tmp{};
+        int64_t  diff{};
         slot *s = nullptr;
 
         while (true) {
@@ -120,14 +124,14 @@ public:
                 return queue_status::SHUTDOWN;
             }        
 
-            p = read.load(std::memory_order_relaxed);
-            s = &vec[(p & mask)];
-            diff = (int64_t)s->seq.load(std::memory_order_acquire) - (int64_t)(p + 1);
+            read_tmp = read.load(std::memory_order_relaxed);
+            s = &vec[(read_tmp & mask)];
+            diff = (int64_t)s->seq.load(std::memory_order_acquire) - (int64_t)(read_tmp + 1);
 
             if (diff == 0) {
                 //measurment is avilable to pop
 
-                if (read.compare_exchange_weak(p, p + 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
+                if (read.compare_exchange_weak(read_tmp, read_tmp + 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
                     //successfully claimed the slot
                     break;
                 } 
@@ -144,7 +148,7 @@ public:
             }      
         }
         meas = std::move(s->data);
-        s->seq.store(p + total_capacity, std::memory_order_release);
+        s->seq.store(read_tmp + total_capacity, std::memory_order_release);
         return queue_status::OK;
     }
 
